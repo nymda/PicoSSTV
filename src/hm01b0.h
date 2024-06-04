@@ -9,15 +9,21 @@
 #include "hardware/i2c.h"
 #include "hardware/pio.h"
 
-#define HIMAX_BOOT_RETRY            (10)
-#define HIMAX_LINE_LEN_PCK_FULL     0x178
-#define HIMAX_FRAME_LENGTH_FULL     0x109
+#define HIMAX_BOOT_RETRY                (10)
+#define HIMAX_LINE_LEN_PCK_FULL         0x178
+#define HIMAX_FRAME_LENGTH_FULL         0x109
 
-#define HIMAX_LINE_LEN_PCK_QVGA     0x178
-#define HIMAX_FRAME_LENGTH_QVGA     0x104
+#define HIMAX_LINE_LEN_PCK_QVGA         0x178
+#define HIMAX_FRAME_LENGTH_QVGA         0x104
 
-#define HIMAX_LINE_LEN_PCK_QQVGA    0x178
-#define HIMAX_FRAME_LENGTH_QQVGA    0x084
+#define HIMAX_LINE_LEN_PCK_QQVGA        0x178
+#define HIMAX_FRAME_LENGTH_QQVGA        0x084
+
+#define HIMAX_RESET                     0x01
+#define HIMAX_MODE_STANDBY              0x00
+#define HIMAX_MODE_STREAMING            0x01     // I2C triggered streaming enable
+#define HIMAX_MODE_STREAMING_NFRAMES    0x03     // Output N frames
+#define HIMAX_MODE_STREAMING_TRIG       0x05     // Hardware Trigger
 
 // Read only registers
 #define         MODEL_ID_H                      0x0000
@@ -149,14 +155,16 @@ void hm01b0_read_frame(uint8_t* buffer, size_t length);
 
 void hm01b0_set_exposure(uint16_t exposure);
 
-void hm01b0_set_brightness(int level);
+void hm01b0_set_brightness(uint8_t level);
 
 void hm01b0_set_gain(char gain);
 
 void hm01b0_enable_auto_exposure(bool enable);
 
-void hm01b0_set_AGain(float db, float ciel);
+void hm01b0_set_AGain(char ceil);
 
 void hm01b0_set_MGain(float db);
+
+void hm01b0_set_test_pattern();
 
 #endif

@@ -188,6 +188,8 @@ int hm01b0_init(const struct hm01b0_config* config)
     pio_gpio_init(config->pio, config->hsync_pin);
     pio_gpio_init(config->pio, config->pclk_pin);
 
+    hm01b0_write_reg8(MODE_SELECT, 0x01); // MODE_SELECT
+
     return 0;
 }
 
@@ -234,12 +236,9 @@ void hm01b0_read_frame(uint8_t* buffer, size_t length)
     dma_channel_start(dma_channel);
     pio_sm_set_enabled(config->pio, config->pio_sm, true);
     pio_sm_put_blocking(config->pio, config->pio_sm, config->width * hm01b0_inst.num_pclk_per_px - 1);
-    hm01b0_write_reg8(MODE_SELECT, 0x01); // MODE_SELECT
     dma_channel_wait_for_finish_blocking(dma_channel);
-
     pio_sm_set_enabled(config->pio, config->pio_sm, false);
     dma_channel_unclaim(dma_channel);
-    hm01b0_write_reg8(MODE_SELECT, 0x00); // MODE_SELECT
 }
 
 void hm01b0_set_exposure(uint16_t exposure)
@@ -249,8 +248,9 @@ void hm01b0_set_exposure(uint16_t exposure)
     hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01); 
 }
 
-void hm01b0_set_brightness(int level){
+void hm01b0_set_brightness(uint8_t level){
     hm01b0_write_reg8(AE_TARGET_MEAN, level);
+    hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
 }
 
 void hm01b0_set_MGain(float db){
@@ -260,16 +260,19 @@ void hm01b0_set_MGain(float db){
 }
 
 void hm01b0_enable_auto_exposure(bool enable){
-    hm01b0_write_reg8(AE_CTRL, enable);
+    if(enable){
+        hm01b0_write_reg8(AE_CTRL, 1);
+    }
+    else{
+        hm01b0_write_reg8(AE_CTRL, 0);
+    }
     hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
 }
 
-void hm01b0_set_AGain(float db, float ciel){
-    ciel = fmax(fmin(ciel, 24.0f), 0.0f);
-    int gain = ceilf(log2(expf((ciel / 20.0f) * log(10.0f))));
-    hm01b0_write_reg8(MAX_AGAIN_FULL, gain);
-    hm01b0_write_reg8(MAX_AGAIN_BIN2, gain);
-    hm01b0_enable_auto_exposure(true);
+// 0x01 2x, 0x02 4x, 0x03 8x, 0x04 0x16
+void hm01b0_set_AGain(char ceil){
+    hm01b0_write_reg8(MAX_AGAIN_FULL, ceil);
+    hm01b0_write_reg8(MAX_AGAIN_BIN2, ceil);
 }
 
 static int hm01b0_reset()
@@ -285,6 +288,11 @@ static int hm01b0_reset()
     }
 
     return -1;
+}
+
+void hm01b0_set_test_pattern(){
+    hm01b0_write_reg8(TEST_PATTERN_MODE, 0b00010001);
+    hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
 }
 
 static uint8_t hm01b0_read_reg8(uint16_t address)

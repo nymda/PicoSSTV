@@ -17,7 +17,7 @@ add_executable(
 	src/main_demo.cpp
 	src/camera.cpp
 	src/hm01b0.c
-	src/usb_descriptors.c
+	src/tusb_descriptors.c
 )
 
 target_include_directories(picoSSTV PRIVATE
@@ -28,21 +28,22 @@ target_include_directories(picoSSTV PRIVATE
 )
 
 target_link_libraries(
-picoSSTV
-tinyusb_device
-tinyusb_board
-cmsis_core
-pico_stdlib
-pico_audio_i2s
-pico_multicore
-hardware_i2c
-hardware_pwm)
+	picoSSTV
+	tinyusb_device
+	tinyusb_board
+	cmsis_core
+	pico_stdlib
+	pico_audio_i2s
+	pico_multicore
+	hardware_i2c
+	hardware_pwm
+)
 
 target_compile_definitions(picoSSTV PRIVATE
-# compile time configuration of I2S
-PICO_AUDIO_I2S_MONO_INPUT=1
-#define for our example code
-USE_AUDIO_I2S=1
+	# compile time configuration of I2S
+	PICO_AUDIO_I2S_MONO_INPUT=1
+	#define for our example code
+	USE_AUDIO_I2S=1
 )
 
 pico_add_extra_outputs(picoSSTV)

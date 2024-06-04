@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <math.h>
 #include <malloc.h>
+#include <cstring>
 #include "pico/stdlib.h"
 #include "audio.hpp"
 #include "camera.h"
-//#include "pico/multicore.h"
-#include <cstring>
 
-#include "bsp/board_api.h"
+#include "bsp/board.h"
 #include "tusb.h"
+
+#include "pico/multicore.h"
 
 #define BYTE unsigned char
 #define LED_PIN 25
@@ -27,7 +28,7 @@ struct serialCommand {
     char payload[4] = {};
 };
 
-enum serialCommandIds{
+enum commandID{
     invalid = -1,
     idle = 0,
     requesting = 1,
@@ -202,65 +203,28 @@ void encodeBW8(){
     }
 }
 
-//unsafe! very!
-void serialTransmit(uint8_t* data, int length){
-    for(int i = 0; i < length; i++){
-        putchar_raw(data[i]);
+static void cdc_task(void) {
+  if (tud_cdc_available()) {
+    uint8_t buf[64];
+    uint32_t count = tud_cdc_read(buf, sizeof(buf));
+    for (uint32_t i = 0; i < count; i++) {
+      tud_cdc_write_char(buf[i] + 1);
     }
+    tud_cdc_write_flush();
+  }
 }
 
-//unsafe! very!
-void serialRecieve(uint8_t* buffer, int length, int timeout){
-    for(int i = 0; i < length; i++){
-        buffer[i] = (uint8_t)getchar_timeout_us(timeout);
-    }
-}
-
-void serialTransmitChars(const char* data){
-    serialTransmit((uint8_t*)data, strlen(data));
-}
-
-int serialRecieveCommand(){
-
-    char ping[8] = {};
-    serialRecieve((uint8_t*)ping, 8, 25000);
-    serialTransmit((uint8_t*)ping, 8);
-
-    return 0;
-
-    serialCommand recieve = {};
-    recieve.ID = serialCommandIds::idle;
-
-    serialCommand request = {};
-    request.ID = serialCommandIds::requesting;
-
-    //request instruction from connected device
-    serialTransmit((uint8_t*)&request, sizeof(serialCommand));
-
-    //recieve instruction if provided
-    serialRecieve((uint8_t*)&recieve, 8, 25000);
-
-    serialTransmit((uint8_t*)&recieve, sizeof(serialCommand));
-
-    if(recieve.header[0] != 'S' || recieve.header[1] != 'C'){ recieve = {}; recieve.ID == serialCommandIds::idle; }
-
-    //return instruction ID
-    return recieve.ID;
-}
-
-static void cdc_task(void);
-
-int main() {
-    stdio_init_all();
-    board_init();
-    tud_init(BOARD_TUD_RHPORT);
-    if (board_init_after_tusb) {
-        board_init_after_tusb();
-    }
-    while (1) {
-        tud_task(); // tinyusb device task
+void main_USB(){
+    while(true){
+        tud_task();
         cdc_task();
     }
+}
+
+int main() {
+    board_init();
+    tusb_init();
+    stdio_init_all();
 
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
@@ -272,49 +236,29 @@ int main() {
     gpio_init(BUTTON_LED_PIN);
     gpio_set_dir(BUTTON_LED_PIN, GPIO_OUT);
 
-    if(!initCamera(160, 120, 1500)){
-        HALT();
-    }
-
+    if(!initCamera(160, 120, 1500)){ HALT(); }
     ap = init_audio(sampleRate, PICO_AUDIO_PACK_I2S_DATA, PICO_AUDIO_PACK_I2S_BCLK);
 
     led = true;
     gpio_put(BUTTON_LED_PIN, led);
 
     while(true){
-        //wait for the button to be pressed again
-        serialCommand next = {};
-        next.ID == serialCommandIds::idle;
-        bool btnPressed = !gpio_get(BUTTON_PIN);  
-        while(next.ID == serialCommandIds::idle){
-            btnPressed = !gpio_get(BUTTON_PIN);
-            next.ID = serialRecieveCommand();
-            if(btnPressed){ next.ID = serialCommandIds::img_over_audio; }
+        //wait for the button
+        while(gpio_get(BUTTON_PIN)){
+            sleep_ms(5);
         }
 
         // Read image data into frameBuffer over SPI
         captureFrame();
 
-        // Send frame to PC over serial
-        if(next.ID == serialCommandIds::img_over_serial){
-            led = false;
-            gpio_put(BUTTON_LED_PIN, led);
-            serialTransmit(framebuffer, (160 * 120));
-            led = true;
-            gpio_put(BUTTON_LED_PIN, led);
-        }
+        //VOX tone
+        encodeVOX();
 
-        // Encode frame and transmit as SSTV
-        if(next.ID == serialCommandIds::img_over_audio){
-            //VOX tone
-            encodeVOX();
+        //SSTV encode
+        encodeBW8();
 
-            //SSTV encode
-            encodeBW8();
-
-            //footer, also makes the blinking LED look nice
-            tone(0, (int)actualDurationMS % ledBlinkTime);
-        }
+        //footer, also makes the blinking LED look nice
+        tone(0, (int)actualDurationMS % ledBlinkTime);
 
         // Reset variables
         reset();
@@ -324,28 +268,7 @@ int main() {
         gpio_put(BUTTON_LED_PIN, led);
     }
 
-    HALT();  
+    HALT();
 
     return 0;
-}
-
-static void cdc_task(void) {
-  uint8_t itf;
-
-  for (itf = 0; itf < CFG_TUD_CDC; itf++) {
-    // connected() check for DTR bit
-    // Most but not all terminal client set this when making connection
-    // if ( tud_cdc_n_connected(itf) )
-    {
-      if (tud_cdc_n_available(itf)) {
-        uint8_t buf[64];
-
-        uint32_t count = tud_cdc_n_read(itf, buf, sizeof(buf));
-
-        // echo back to both serial ports
-        echo_serial_port(0, buf, count);
-        echo_serial_port(1, buf, count);
-      }
-    }
-  }
 }
