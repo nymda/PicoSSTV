@@ -193,6 +193,10 @@ int hm01b0_init(const struct hm01b0_config* config)
     return 0;
 }
 
+void hm01b0_param_hold(){
+    hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
+}
+
 void hm01b0_deinit()
 {
     struct hm01b0_config* config = &hm01b0_inst.config;
@@ -243,14 +247,25 @@ void hm01b0_read_frame(uint8_t* buffer, size_t length)
 
 void hm01b0_set_exposure(uint16_t exposure)
 {
-    hm01b0_write_reg16(INTEGRATION_H, exposure);
+    hm01b0_write_reg16(INTEGRATION_H, (exposure >> 8) & 0xFF);
     hm01b0_write_reg16(INTEGRATION_L, exposure & 0xFF);
-    hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01); 
+    hm01b0_param_hold();
+}
+
+void hm01b0_set_max_integ(uint16_t exposure){
+    hm01b0_write_reg16(MAX_INTG_H, (exposure >> 8) & 0xFF);
+    hm01b0_write_reg16(MAX_INTG_L, exposure & 0xFF);
+    hm01b0_param_hold();
 }
 
 void hm01b0_set_brightness(uint8_t level){
     hm01b0_write_reg8(AE_TARGET_MEAN, level);
-    hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
+    hm01b0_param_hold();
+}
+
+void hm01b0_set_min_brightness(uint8_t level){
+    hm01b0_write_reg8(AE_MIN_MEAN, level);
+    hm01b0_param_hold();
 }
 
 void hm01b0_set_MGain(float db){
@@ -270,9 +285,26 @@ void hm01b0_enable_auto_exposure(bool enable){
 }
 
 // 0x01 2x, 0x02 4x, 0x03 8x, 0x04 0x16
-void hm01b0_set_AGain(char ceil){
+void hm01b0_set_max_DGain(char ceil){
+    hm01b0_write_reg8(MAX_DGAIN, ceil);
+    hm01b0_param_hold();
+}
+
+void hm01b0_set_min_DGain(char floor){
+    hm01b0_write_reg8(MIN_DGAIN, floor);
+    hm01b0_param_hold();
+}
+
+// 0x01 2x, 0x02 4x, 0x03 8x, 0x04 0x16
+void hm01b0_set_max_AGain(char ceil){
     hm01b0_write_reg8(MAX_AGAIN_FULL, ceil);
     hm01b0_write_reg8(MAX_AGAIN_BIN2, ceil);
+    hm01b0_param_hold();
+}
+
+void hm01b0_set_min_AGain(char floor){
+    hm01b0_write_reg8(MIN_AGAIN, floor);
+    hm01b0_param_hold();
 }
 
 static int hm01b0_reset()

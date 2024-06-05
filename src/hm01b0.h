@@ -155,13 +155,23 @@ void hm01b0_read_frame(uint8_t* buffer, size_t length);
 
 void hm01b0_set_exposure(uint16_t exposure);
 
+void hm01b0_set_max_integ(uint16_t exposure);
+
 void hm01b0_set_brightness(uint8_t level);
+
+void hm01b0_set_min_brightness(uint8_t level);
 
 void hm01b0_set_gain(char gain);
 
 void hm01b0_enable_auto_exposure(bool enable);
 
-void hm01b0_set_AGain(char ceil);
+void hm01b0_set_max_DGain(char ceil);
+
+void hm01b0_set_min_DGain(char floor);
+
+void hm01b0_set_max_AGain(char ceil);
+
+void hm01b0_set_min_AGain(char floor);
 
 void hm01b0_set_MGain(float db);
 
