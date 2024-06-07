@@ -268,10 +268,12 @@ void hm01b0_set_min_brightness(uint8_t level){
     hm01b0_param_hold();
 }
 
-void hm01b0_set_MGain(float db){
-    db = fmax(fmin(db, 24.0f), 0.0f);
-    int gain = ceilf(log2(expf((db / 20.0f) * log(10.0f))));
+void hm01b0_set_MGain(char gain){
     hm01b0_write_reg8(ANALOG_GAIN, gain);
+}
+
+uint8_t hm01b0_get_gains(){
+    return hm01b0_read_reg8(ANALOG_GAIN);
 }
 
 void hm01b0_enable_auto_exposure(bool enable){

@@ -213,7 +213,7 @@ int main() {
     gpio_init(BUTTON_LED_PIN);
     gpio_set_dir(BUTTON_LED_PIN, GPIO_OUT);
 
-    if(!initCamera(160, 120, 1500)){ HALT(); }
+    if(!initCamera(160, 120)){ HALT(); }
     ap = init_audio(sampleRate, PICO_AUDIO_PACK_I2S_DATA, PICO_AUDIO_PACK_I2S_BCLK);
 
     led = true;

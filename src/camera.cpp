@@ -30,7 +30,7 @@ struct hm01b0_config hm01b0_config = {
 
 uint8_t* framebuffer = 0;
 
-bool initCamera(int width, int height, int exposure){
+bool initCamera(int width, int height){
     if(framebuffer){
         free(framebuffer);
     }
@@ -41,9 +41,9 @@ bool initCamera(int width, int height, int exposure){
     if (hm01b0_init(&hm01b0_config) != 0) { return false; }
     framebuffer = (uint8_t*)malloc(hm01b0_config.width * hm01b0_config.height);
     
-    hm01b0_set_max_DGain(0xF0);
-    hm01b0_set_max_AGain(0x02);
-    hm01b0_set_brightness(95);
+    hm01b0_set_MGain(0x30);
+    hm01b0_set_max_AGain(128);
+    hm01b0_set_brightness(100);
     hm01b0_enable_auto_exposure(true);
 
     return true;
@@ -51,6 +51,8 @@ bool initCamera(int width, int height, int exposure){
 
 void captureFrame(){
     hm01b0_read_frame(framebuffer, (hm01b0_config.width * hm01b0_config.height));
+
+    printf("%02x\n", hm01b0_get_gains());   
     for(int i = 0; i < (hm01b0_config.width); i++){
         printf("%02x", framebuffer[i]);
     }

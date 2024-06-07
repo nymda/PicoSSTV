@@ -1,4 +1,4 @@
-bool initCamera(int width, int height, int exposure);
+bool initCamera(int width, int height);
 extern void captureFrame();
 void cameraSecondaryThreadMain();
 extern bool isCapturing();

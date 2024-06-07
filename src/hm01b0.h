@@ -173,8 +173,10 @@ void hm01b0_set_max_AGain(char ceil);
 
 void hm01b0_set_min_AGain(char floor);
 
-void hm01b0_set_MGain(float db);
+void hm01b0_set_MGain(char gain);
 
 void hm01b0_set_test_pattern();
+
+uint8_t hm01b0_get_gains();
 
 #endif
