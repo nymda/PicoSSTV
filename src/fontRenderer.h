@@ -1,0 +1,1 @@
+void drawStr(uint8_t* canvas, int x, int y, const char* string);

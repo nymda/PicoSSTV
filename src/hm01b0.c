@@ -329,6 +329,18 @@ void hm01b0_set_test_pattern(){
     hm01b0_write_reg8(GRP_PARAM_HOLD, 0x01);
 }
 
+void hm01b0_set_motion(){
+    hm01b0_write_reg8(MD_CTRL, 0xFF);
+}
+
+bool hm01b0_get_motion(){
+    return (hm01b0_read_reg8(MD_INTERRUPT) > 0);
+}
+
+void hm01b0_reset_motion(){
+    hm01b0_write_reg8(I2C_CLEAR, 0xFF);
+}
+
 static uint8_t hm01b0_read_reg8(uint16_t address)
 {
     address = __REV16(address);

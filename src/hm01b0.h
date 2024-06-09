@@ -179,4 +179,8 @@ void hm01b0_set_test_pattern();
 
 uint8_t hm01b0_get_gains();
 
+bool hm01b0_get_motion();
+
+void hm01b0_reset_motion();
+
 #endif

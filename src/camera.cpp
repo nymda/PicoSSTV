@@ -49,6 +49,14 @@ bool initCamera(int width, int height){
     return true;
 }
 
+bool getMotion(){
+    return hm01b0_get_motion();
+}
+
+void resetMotion(){
+    hm01b0_reset_motion();
+}
+
 void captureFrame(){
     hm01b0_read_frame(framebuffer, (hm01b0_config.width * hm01b0_config.height));
 

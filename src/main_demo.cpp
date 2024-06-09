@@ -3,9 +3,12 @@
 #include <malloc.h>
 #include <cstring>
 #include "pico/stdlib.h"
+#include "pico/time.h"
+#include "hardware/irq.h"
+#include "hardware/pwm.h"
 #include "audio.hpp"
 #include "camera.h"
-
+#include "fontRenderer.h"
 #include "pico/multicore.h"
 
 #define BYTE unsigned char
@@ -49,14 +52,14 @@ void printMemInfo(){
     printf("Used %%    : %.2f\n", heapUsedPercent);
 }
 
-void HALT(){
-    while(true){
-        gpio_put(BUTTON_LED_PIN, true);
-        sleep_ms(ledBlinkTime);
-        gpio_put(BUTTON_LED_PIN, false);
-        sleep_ms(ledBlinkTime);
-    }
-}
+// void HALT(){
+//     while(true){
+//         gpio_put(BUTTON_LED_PIN, true);
+//         sleep_ms(ledBlinkTime);
+//         gpio_put(BUTTON_LED_PIN, false);
+//         sleep_ms(ledBlinkTime);
+//     }
+// }
 
 int clampUC(int input) {
     return (input) > 255 ? 255 : (input) < 0 ? 0 : input;
@@ -85,6 +88,9 @@ const float pi = 3.1415926535;
 int dataSize = 0;
 double angle = 0.0;
 
+const char* CALLSIGN = "M7XYZ";
+bool enableCallsign = false;
+
 int blocksPerLED = (int)((float)LedBlinkMS / (((float)BUFFER_SIZE / (float)sampleRate) * 1000.f));
 
 int16_t audioData[BUFFER_SIZE] = {};
@@ -94,7 +100,19 @@ struct audio_buffer_pool* ap = 0;
 int si = 0;
 int16_t s = 0;
 
+bool motion = false;
 bool led = false;
+uint16_t led_base = 0x0000;
+uint16_t led_max = 0xFFFF;
+
+void setLED(bool enable){
+    if(enable){
+        pwm_set_gpio_level(BUTTON_LED_PIN, led_max);
+    }
+    else{
+        pwm_set_gpio_level(BUTTON_LED_PIN, led_base);
+    }
+}
 
 int reset() {
     expectedDurationMS = 0;
@@ -104,7 +122,6 @@ int reset() {
     bytesWritten = 0;
     writeIndex = 0;
     blocks = 0;
-
     return 0;
 }
 
@@ -130,7 +147,7 @@ void tone(short frequency, float duration) {
         if(blocks == blocksPerLED){
             blocks = 0;
             led = !led;
-            gpio_put(BUTTON_LED_PIN, led);
+            setLED(led);
         }
 
         audioData[writeIndex] = (int16_t)(ampl * sin(angle));    
@@ -211,22 +228,56 @@ int main() {
     gpio_pull_up(BUTTON_PIN);
 
     gpio_init(BUTTON_LED_PIN);
-    gpio_set_dir(BUTTON_LED_PIN, GPIO_OUT);
+	gpio_set_function(BUTTON_LED_PIN, GPIO_FUNC_PWM);
+	pwm_set_gpio_level(BUTTON_LED_PIN, 0);
+	uint slice_num = pwm_gpio_to_slice_num(BUTTON_LED_PIN);
+	pwm_set_enabled(slice_num, true);
 
-    if(!initCamera(160, 120)){ HALT(); }
+    if(!initCamera(160, 120)){ return 0; }
     ap = init_audio(sampleRate, PICO_AUDIO_PACK_I2S_DATA, PICO_AUDIO_PACK_I2S_BCLK);
 
     led = true;
-    gpio_put(BUTTON_LED_PIN, led);
+    setLED(led);
+
+    int held = 0;
 
     while(true){
-        //wait for the button
+
+        //while button is released - initial hold point
         while(gpio_get(BUTTON_PIN)){
-            sleep_ms(5);
+            sleep_ms(25);
+            if(getMotion()){
+                resetMotion();
+                if(motion){ break; }
+            }
         }
 
+        //while button is pressed - only used to toggle motion - completely incomprehensable
+        while(!gpio_get(BUTTON_PIN)){       
+            if(held < 1250 && held >= 0){
+                sleep_ms(5);
+                held+=5;
+            }
+            else if(held == -10){
+                sleep_ms(5);
+            }
+            else{
+                motion = !motion;
+                if(motion){ led_max = (0xFFFF / 10);}
+                else{ led_max = (0xFFFF); }
+                setLED(led);
+                held = -10;
+            }
+        }
+        if(held < 0){ held = 0; continue; }
+        held = 0;
+        
         // Read image data into frameBuffer over SPI
         captureFrame();
+
+        if(enableCallsign){
+            drawStr(framebuffer, 0, 0, CALLSIGN);
+        }
 
         //VOX tone
         encodeVOX();
@@ -240,12 +291,13 @@ int main() {
         // Reset variables
         reset();
 
+        //reset the motion detected flag
+        resetMotion();
+
         // Turn the LED back on
         led = true;
-        gpio_put(BUTTON_LED_PIN, led);
+        setLED(led);
     }
-
-    HALT();
 
     return 0;
 }
