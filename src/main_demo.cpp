@@ -88,8 +88,8 @@ const float pi = 3.1415926535;
 int dataSize = 0;
 double angle = 0.0;
 
-const char* CALLSIGN = "M7XYZ";
-bool enableCallsign = false;
+const char* CALLSIGN = "M7XXX";
+bool enableCallsign = true;
 
 int blocksPerLED = (int)((float)LedBlinkMS / (((float)BUFFER_SIZE / (float)sampleRate) * 1000.f));
 

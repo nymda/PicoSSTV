@@ -14,6 +14,14 @@ bool getBit(int bitX, int bitY) {
 	return (compressedFontData[byteindex] & (1 << bitindex)) != 0;
 }
 
+void drawRect(uint8_t* canvas, int x, int y, int width, int height, uint8_t shade){
+	for (int ay = 0; ay < height; ay++) {
+		for (int ax = 0; ax < width; ax++) {
+			canvas[((y + ay) * 160) + (x + ax)] = shade;
+		}
+	}
+}
+
 void drawChar(uint8_t* canvas, int x, int y, char c){
     int cmIndex = 0;
     for (char cm : fontMap) {
@@ -35,21 +43,24 @@ void drawChar(uint8_t* canvas, int x, int y, char c){
 	}
 }
 
-void drawSpacer(uint8_t* canvas, int x, int y, int w){
-    for (int ay = 0; ay < CHARY; ay++) {
-		for (int ax = 0; ax < w; ax++) {
-			canvas[((y + ay) * 160) + (x + ax)] = 0x00;
-		}
-	}
-}
+// void drawStr(uint8_t* canvas, int x, int y, const char* string){
+// 	drawRect(canvas, x, y, 2, CHARY + 2, 0x00);
+// 	x += 2;
+//     for(int i = 0; i < strlen(string); i++){
+// 		drawRect(canvas, x, y, CHARX + 2, 2, 0x00);
+//         drawChar(canvas, x, y + 2, string[i]);
+// 		x += CHARX;
+// 		drawRect(canvas, x, y + 2, 2, CHARY, 0x00);
+// 		x += 2;
+//     }
+// }
 
 void drawStr(uint8_t* canvas, int x, int y, const char* string){
-	drawSpacer(canvas, x, y, 2);
-	x += 2;
+	int strWidth = (CHARX + 2) * strlen(string);
+	drawRect(canvas, x, y, strWidth + 4, CHARY + 2, 0x00);
+	x+=3; y+=2;
     for(int i = 0; i < strlen(string); i++){
-        drawChar(canvas, x, y, string[i]);
-		x += CHARX;
-		drawSpacer(canvas, x, y, 2);
-		x += 2;
+		drawChar(canvas, x, y, string[i]);
+		x += CHARX + 2;
     }
 }

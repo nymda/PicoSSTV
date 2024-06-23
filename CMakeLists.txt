@@ -17,6 +17,7 @@ add_executable(
 	src/main_demo.cpp
 	src/camera.cpp
 	src/hm01b0.c
+	src/fontRenderer.cpp
 )
 
 target_include_directories(picoSSTV PRIVATE
