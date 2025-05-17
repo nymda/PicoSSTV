@@ -35,6 +35,8 @@ target_link_libraries(
 	pico_multicore
 	hardware_i2c
 	hardware_pwm
+	hardware_flash 
+	hardware_sync
 )
 
 target_compile_definitions(picoSSTV PRIVATE

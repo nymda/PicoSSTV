@@ -6,10 +6,20 @@
 #include "pico/time.h"
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
+#include "hardware/flash.h"
 #include "audio.hpp"
 #include "camera.h"
 #include "fontRenderer.h"
 #include "pico/multicore.h"
+#include "tusb.h"
+
+/*
+
+    This originally started as a pretty simple project, but has grown more complex over time.
+    This file is really not organised or split up as it should be.
+    Very few good programming practices have been followed.
+
+*/
 
 #define BYTE unsigned char
 #define LED_PIN 25
@@ -19,24 +29,59 @@
 #define BUTTON_PIN 20
 #define BUTTON_LED_PIN 21
 #define BUFFER_SIZE 256
+#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - 4096)
+#define CALLSIGN_LENGTH 12
 
 int ledBlinkTime = 250;
 
-struct serialCommand {
-    char header[2] = { 'S', 'C' };
-    short ID = 0;
-    char payload[4] = {};
-};
-
-enum commandID{
-    invalid = -1,
+enum serialPacketIds{
     idle = 0,
-    requesting = 1,
-    img_over_audio = 2,
-    img_over_serial = 3
+    frameSection = 1,
+    captureStarted = 2,
+    cameraInfo = 3,
+    command = 4
 };
 
-uint32_t getTotalHeap(void) {
+enum serialCommandIds{
+    reserved = 0,
+    trigger = 1,
+    setMotion = 2,
+};
+
+//CAM => PC
+struct frameSectionPacket{
+    char header[2] = { 'S', 'P' };
+    short ID = 1;
+    int offset;
+    int dataSize;
+    uint8_t data[];
+};
+
+//CAM => PC
+struct captureStartedPacket{
+    char header[2] = { 'S', 'P' };
+    short ID = 2;
+};
+
+//CAM => PC
+struct cameraInfoPacket{
+    char header[2] = { 'S', 'P' };
+    short ID = 3;
+    bool motionDetecting;
+    bool motionDetected;
+    short gain;
+};
+
+//CAM <= PC
+struct commandPacket{
+    char header[2] = {'S', 'P'};
+    short ID = 4;
+    short command = 0;
+    uint8_t data[16] = { 0 };
+};
+
+
+uint32_t getTotalHeap() {
    extern char __StackLimit, __bss_end__;
    return &__StackLimit  - &__bss_end__;
 }
@@ -52,18 +97,11 @@ void printMemInfo(){
     printf("Used %%    : %.2f\n", heapUsedPercent);
 }
 
-// void HALT(){
-//     while(true){
-//         gpio_put(BUTTON_LED_PIN, true);
-//         sleep_ms(ledBlinkTime);
-//         gpio_put(BUTTON_LED_PIN, false);
-//         sleep_ms(ledBlinkTime);
-//     }
-// }
-
 int clampUC(int input) {
     return (input) > 255 ? 255 : (input) < 0 ? 0 : input;
 }
+
+void setLED(bool enable);
 
 double expectedDurationMS = 0;
 double actualDurationMS = 0;
@@ -72,6 +110,44 @@ int balance_SkippedSamples = 0;
 int bytesWritten = 0;
 int writeIndex = 0;
 int blocks = 0;
+const int LedBlinkMS = 250;
+const int ampl = 25000;
+const int sampleRate = 8000;
+const int frequency = 1000;
+const float pi = 3.1415926535;
+int dataSize = 0;
+double angle = 0.0;
+int blocksPerLED = (int)((float)LedBlinkMS / (((float)BUFFER_SIZE / (float)sampleRate) * 1000.f));
+int16_t audioData[BUFFER_SIZE] = {};
+struct audio_buffer_pool* ap = 0; 
+int si = 0;
+int16_t s = 0;
+bool motionDetection = false;
+bool externalTrigger = false;
+bool led = false;
+uint16_t led_base = 0x0000;
+uint16_t led_max = 0xFFFF;
+char CALLSIGN[CALLSIGN_LENGTH] = { };
+const uint8_t *flash_target_contents = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
+
+bool validateFlashCallsign(){
+    for(int i = 0; i < CALLSIGN_LENGTH; i++){
+        char c = flash_target_contents[i];
+        if(!isValidCharacter(c)){ return false; }
+    }
+    return true;
+}
+
+void __not_in_flash_func(callsign_write_flash)(const uint8_t* buffer){
+    flash_range_program(FLASH_TARGET_OFFSET, buffer, CALLSIGN_LENGTH);
+}
+
+void callsign_read_flash(){
+    if(!validateFlashCallsign()){
+        flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+    }
+    memcpy(CALLSIGN, flash_target_contents, CALLSIGN_LENGTH);
+}
 
 void printDbg(){
     printf("Encode complete!\n");
@@ -80,30 +156,82 @@ void printDbg(){
     printf(" Added: %i, Skipped: %i\n\n", balance_AddedSamples, balance_SkippedSamples);
 }
 
-const int LedBlinkMS = 250;
-const int ampl = 25000;
-const int sampleRate = 8000;
-const int frequency = 1000;
-const float pi = 3.1415926535;
-int dataSize = 0;
-double angle = 0.0;
+void setMotionDetection(bool enabled){
+    motionDetection = enabled;
+    if(motionDetection){ led_max = (0xFFFF / 10);}
+    else{ led_max = (0xFFFF); }
+    setLED(led);
+}
 
-const char* CALLSIGN = "M7XXX";
-bool enableCallsign = true;
+void second_core_read_USB_stream(){
+    while(true){
+        if(stdio_usb_connected()){
+            char RXbuffer[sizeof(commandPacket)] = { 0 };
+            tud_cdc_read(RXbuffer, sizeof(RXbuffer));
+            if(RXbuffer[0] == 'S' && RXbuffer[1] == 'P'){
+                commandPacket* cmd = (commandPacket*)RXbuffer;
+                if(cmd->ID != serialPacketIds::command ){ continue; }
 
-int blocksPerLED = (int)((float)LedBlinkMS / (((float)BUFFER_SIZE / (float)sampleRate) * 1000.f));
+                if(cmd->command == serialCommandIds::trigger){
+                    externalTrigger = true;
+                }
+                if(cmd->command == serialCommandIds::setMotion){
+                    setMotionDetection(cmd->data[0]);
+                }
+            }
+        }
+    }
+}
 
-int16_t audioData[BUFFER_SIZE] = {};
+static void usb_write_data(uint8_t* buf, int length) {
+    static uint64_t last_avail_time;
+    if (stdio_usb_connected()) {
+        for (int i = 0; i < length;) {
+            int n = length - i;
+            int avail = (int)tud_cdc_write_available();
+            if (n > avail) n = avail;
+            if (n) {
+                int n2 = (int) tud_cdc_write(buf + i, (uint32_t)n);
+                tud_task();
+                tud_cdc_write_flush();
+                i += n2;
+                last_avail_time = time_us_64();
+            } else {
+                tud_task();
+                tud_cdc_write_flush();
+                if (!stdio_usb_connected() ||
+                    (!tud_cdc_write_available() && time_us_64() > last_avail_time + PICO_STDIO_USB_STDOUT_TIMEOUT_US)) {
+                    break;
+                }
+            }
+        }
+    } else {
+        // reset our timeout
+        last_avail_time = 0;
+    }
+}
 
-struct audio_buffer_pool* ap = 0; 
+static void usb_transfer_frame(int chunks){
+    short totalTransferLength = (160 * 120);
+    short remainingTransferLength = totalTransferLength;
+    short chunkSize = totalTransferLength / chunks;
 
-int si = 0;
-int16_t s = 0;
-
-bool motion = false;
-bool led = false;
-uint16_t led_base = 0x0000;
-uint16_t led_max = 0xFFFF;
+    for(int i = 0; i < chunks; i++){
+        frameSectionPacket* FSP = (frameSectionPacket*)malloc(sizeof(frameSectionPacket) + chunkSize);
+        short frameOffset = totalTransferLength - remainingTransferLength;
+        memcpy(FSP->data, framebuffer + frameOffset, chunkSize);
+        //memset(FSP->data, 0, chunkSize);
+        FSP->header[0] = 'S';
+        FSP->header[1] = 'P';
+        FSP->ID = serialPacketIds::frameSection;
+        FSP->dataSize = chunkSize;
+        FSP->offset = frameOffset;
+        usb_write_data((uint8_t*)FSP, sizeof(frameSectionPacket) + FSP->dataSize);
+        remainingTransferLength -= chunkSize;
+        free(FSP);
+        sleep_us(500);
+    }
+}
 
 void setLED(bool enable){
     if(enable){
@@ -171,7 +299,15 @@ void tone(short frequency, float duration) {
     }
 }
 
-void encodeVOX(){
+void encodeVOX(){ //long vox tone is not standard but is required for some radios
+    tone(1900, 100);
+    tone(1500, 100);
+    tone(1900, 100);
+    tone(1500, 100);
+    tone(2300, 100);
+    tone(1500, 100);
+    tone(2300, 100);
+    tone(1500, 100);
     tone(1900, 100);
     tone(1500, 100);
     tone(1900, 100);
@@ -217,8 +353,28 @@ void encodeBW8(){
     }
 }
 
+int hold(){
+    if(getMotion()){
+        resetMotion();
+        if(motionDetection){ return 1; }
+    }
+    if(externalTrigger){
+        externalTrigger = false;
+        return 2;
+    }
+    if(stdio_usb_connected()){
+        captureFrame();
+        if(CALLSIGN[0] != 0x00){
+            drawStr(framebuffer, 0, 0, CALLSIGN);
+        }
+        usb_transfer_frame(8);
+    }
+    return 0;
+}
+
 int main() {
     stdio_init_all();
+    //callsign_read_flash();
 
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
@@ -236,6 +392,8 @@ int main() {
     if(!initCamera(160, 120)){ return 0; }
     ap = init_audio(sampleRate, PICO_AUDIO_PACK_I2S_DATA, PICO_AUDIO_PACK_I2S_BCLK);
 
+    multicore_launch_core1(second_core_read_USB_stream);
+
     led = true;
     setLED(led);
 
@@ -246,11 +404,14 @@ int main() {
         //while button is released - initial hold point
         while(gpio_get(BUTTON_PIN)){
             sleep_ms(25);
-            if(getMotion()){
-                resetMotion();
-                if(motion){ break; }
+            if(hold() > 0){
+                break;
             }
         }
+
+        // Read image data into frameBuffer over SPI
+        captureFrame();
+        //do this before entering the while pressed loop so that the final image is captured on press rather than on release
 
         //while button is pressed - only used to toggle motion - completely incomprehensable
         while(!gpio_get(BUTTON_PIN)){       
@@ -262,21 +423,19 @@ int main() {
                 sleep_ms(5);
             }
             else{
-                motion = !motion;
-                if(motion){ led_max = (0xFFFF / 10);}
-                else{ led_max = (0xFFFF); }
-                setLED(led);
+                setMotionDetection(!motionDetection);
                 held = -10;
             }
         }
         if(held < 0){ held = 0; continue; }
         held = 0;
-        
-        // Read image data into frameBuffer over SPI
-        captureFrame();
 
-        if(enableCallsign){
+        if(CALLSIGN[0] != 0x00){
             drawStr(framebuffer, 0, 0, CALLSIGN);
+        }
+
+        if(stdio_usb_connected()){ 
+            usb_transfer_frame(8);
         }
 
         //VOX tone

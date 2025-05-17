@@ -59,10 +59,4 @@ void resetMotion(){
 
 void captureFrame(){
     hm01b0_read_frame(framebuffer, (hm01b0_config.width * hm01b0_config.height));
-
-    printf("%02x\n", hm01b0_get_gains());   
-    for(int i = 0; i < (hm01b0_config.width); i++){
-        printf("%02x", framebuffer[i]);
-    }
-    printf("\n");
 }

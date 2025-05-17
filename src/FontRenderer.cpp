@@ -7,6 +7,15 @@
 #define DATAX 144
 #define DATAY 101
 
+bool isValidCharacter(uint8_t c){
+	bool valid = false;
+	for(int chk = 0; chk < sizeof(fontMap); chk++){ 
+		if(c == fontMap[chk]){ valid = true; } 
+	}
+	if(!valid) { return false; }
+	return true;
+}
+
 bool getBit(int bitX, int bitY) {
 	int index = bitY * DATAX + bitX;
 	int byteindex = index / 8;
@@ -42,18 +51,6 @@ void drawChar(uint8_t* canvas, int x, int y, char c){
 		}
 	}
 }
-
-// void drawStr(uint8_t* canvas, int x, int y, const char* string){
-// 	drawRect(canvas, x, y, 2, CHARY + 2, 0x00);
-// 	x += 2;
-//     for(int i = 0; i < strlen(string); i++){
-// 		drawRect(canvas, x, y, CHARX + 2, 2, 0x00);
-//         drawChar(canvas, x, y + 2, string[i]);
-// 		x += CHARX;
-// 		drawRect(canvas, x, y + 2, 2, CHARY, 0x00);
-// 		x += 2;
-//     }
-// }
 
 void drawStr(uint8_t* canvas, int x, int y, const char* string){
 	int strWidth = (CHARX + 2) * strlen(string);
